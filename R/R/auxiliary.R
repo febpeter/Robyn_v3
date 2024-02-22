@@ -19,7 +19,7 @@ get_rsq <- function(true, predicted, p = NULL, df.int = NULL, n_train = NULL) {
     rsq_adj <- 1 - (1 - rsq) * ((n - df.int) / rdf)
     rsq_out <- rsq_adj
   }
-  return(rsq_out)
+  return(rsq)
 }
 
 # Robyn colors
