@@ -714,7 +714,7 @@ robyn_mmm <- function(InputCollect,
             # lambda_max <- max(lambdas)
             lambda_hp <- unlist(hypParamSamNG$lambda[i])
             if (hyper_fixed == FALSE) {
-              lambda_scaled <- lambda_min + (lambda_max - lambda_min) * lambda_hp
+              lambda_scaled <- 0
             } else {
               lambda_scaled <- lambda_hp
             }
