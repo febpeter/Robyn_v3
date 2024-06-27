@@ -204,7 +204,7 @@ robyn_inputs <- function(dt_input = NULL,
       organic_vars)
 
     ## Check date input (and set dayInterval and intervalType)
-    date_input <- check_datevar(dt_input, date_var)
+    # date_input <- check_datevar(dt_input, date_var)
     dt_input <- date_input$dt_input # sorted date by ascending
     date_var <- date_input$date_var # when date_var = "auto"
     dayInterval <- date_input$dayInterval
