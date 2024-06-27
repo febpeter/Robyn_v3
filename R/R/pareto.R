@@ -111,7 +111,10 @@ robyn_pareto <- function(InputCollect, OutputModels,
 
   # Prepare parallel loop
   if (TRUE) {
-    if (check_parallel() & OutputModels$cores > 1) registerDoParallel(OutputModels$cores) else registerDoSEQ()
+    if (OutputModels$cores > 1) {
+      registerDoParallel(OutputModels$cores)
+      registerDoSEQ()
+    }
     if (hyper_fixed) pareto_fronts <- 1
     # Get at least 100 candidates for better clustering
     if (nrow(resultHypParam) == 1) pareto_fronts <- 1
@@ -161,8 +164,8 @@ robyn_pareto <- function(InputCollect, OutputModels,
     get_resp <- robyn_response(
       select_model = get_solID,
       metric_name = get_spendname,
-      #metric_value = decompSpendDistPar$total_spend[respN],
-      #date_range = range(InputCollect$dt_modRollWind$ds),
+      # metric_value = decompSpendDistPar$total_spend[respN],
+      # date_range = range(InputCollect$dt_modRollWind$ds),
       date_range = "all",
       dt_hyppar = resultHypParamPar,
       dt_coef = xDecompAggPar,
@@ -213,8 +216,6 @@ robyn_pareto <- function(InputCollect, OutputModels,
       run_dt_resp(respN, InputCollect, OutputModels, decompSpendDistPar, resultHypParamPar, xDecompAggPar, ...)
     }
     stopImplicitCluster()
-    registerDoSEQ()
-    getDoParWorkers()
   } else {
     resp_collect <- bind_rows(lapply(seq_along(decompSpendDistPar$rn), function(respN) {
       run_dt_resp(respN, InputCollect, OutputModels, decompSpendDistPar, resultHypParamPar, xDecompAggPar, ...)
@@ -407,7 +408,7 @@ robyn_pareto <- function(InputCollect, OutputModels,
         )
       }
       dt_transformSaturationDecomp <- dt_transformSaturation
-      for (i in 1:InputCollect$mediaVarCount) {
+      for (i in seq_along(InputCollect$all_media)) {
         coef <- plotWaterfallLoop$coef[plotWaterfallLoop$rn == InputCollect$all_media[i]]
         dt_transformSaturationDecomp[InputCollect$all_media[i]] <- coef *
           dt_transformSaturationDecomp[InputCollect$all_media[i]]
@@ -418,7 +419,7 @@ robyn_pareto <- function(InputCollect, OutputModels,
 
       ## Reverse MM fitting
       # dt_transformSaturationSpendReverse <- copy(dt_transformAdstock[, c("ds", InputCollect$all_media), with = FALSE])
-      # for (i in 1:InputCollect$mediaVarCount) {
+      # for (i in seq_along(InputCollect$paid_media_spends)) {
       #   chn <- InputCollect$paid_media_vars[i]
       #   if (chn %in% InputCollect$paid_media_vars[InputCollect$exposure_selector]) {
       #     # Get Michaelis Menten nls fitting param
@@ -596,8 +597,7 @@ robyn_pareto <- function(InputCollect, OutputModels,
     df_caov_pct_all = df_caov_pct_all
   )
 
-  # if (check_parallel()) stopImplicitCluster()
-  # close(pbplot)
+  if (OutputModels$cores > 1) stopImplicitCluster()
 
   return(pareto_results)
 }

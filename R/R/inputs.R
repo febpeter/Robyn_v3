@@ -33,7 +33,7 @@
 #' @param dt_holidays data.frame. Raw input holiday data. Load standard
 #' Prophet holidays using \code{data("dt_prophet_holidays")}
 #' @param date_var Character. Name of date variable. Daily, weekly
-#' and monthly data supported. Weekly requires week-start of Monday or Sunday.
+#' and monthly data supported.
 #' \code{date_var} must have format "2020-01-01" (YYY-MM-DD).
 #' Default to automatic date detection.
 #' @param dep_var Character. Name of dependent variable. Only one allowed
@@ -74,7 +74,7 @@
 #' @param factor_vars Character vector. Specify which of the provided
 #' variables in organic_vars or context_vars should be forced as a factor.
 #' @param prophet_vars Character vector. Include any of "trend",
-#' "season", "weekday", "holiday" or NULL. Highly recommended
+#' "season", "weekday", "monthly", "holiday" or NULL. Highly recommended
 #' to use all for daily data and "trend", "season", "holiday" for
 #' weekly and above cadence. Set to NULL to skip prophet's functionality.
 #' @param prophet_signs Character vector. Choose any of
@@ -119,8 +119,10 @@
 #' Check "Guide for calibration source" section.
 #' @param InputCollect Default to NULL. \code{robyn_inputs}'s output when
 #' \code{hyperparameters} are not yet set.
-#' @param json_file Character. JSON file to import previously exported inputs
-#' (needs \code{dt_input} and \code{dt_holidays} parameters too).
+#' @param json_file Character. JSON file to import previously exported inputs or
+#' recreate a model. To generate this file, use \code{robyn_write()}.
+#' If you didn't export your data in the json file as "raw_data",
+#' \code{dt_input} must be provided; \code{dt_holidays} input is optional.
 #' @param ... Additional parameters passed to \code{prophet} functions.
 #' @examples
 #' # Using dummy simulated data
@@ -177,7 +179,13 @@ robyn_inputs <- function(dt_input = NULL,
   ### Use case 3: running robyn_inputs() with json_file
   if (!is.null(json_file)) {
     json <- robyn_read(json_file, step = 1, ...)
-    if (is.null(dt_input)) stop("Must provide 'dt_input' input; 'dt_holidays' input optional")
+    if (is.null(dt_input)) {
+      if ("raw_data" %in% names(json[["Extras"]])) {
+        dt_input <- as_tibble(json[["Extras"]]$raw_data)
+      } else {
+        stop("Must provide 'dt_input' input; 'dt_holidays' input optional")
+      }
+    }
     if (!is.null(hyperparameters)) {
       warning("Replaced hyperparameters input with json_file's fixed hyperparameters values")
     }
@@ -191,17 +199,18 @@ robyn_inputs <- function(dt_input = NULL,
     dt_input <- as_tibble(dt_input)
     if (!is.null(dt_holidays)) dt_holidays <- as_tibble(dt_holidays)
 
-    ## Check for NA and all negative values
-    dt_input <- check_allneg(dt_input)
-    check_nas(dt_input)
-    check_nas(dt_holidays)
-
     ## Check vars names (duplicates and valid)
     check_varnames(
       dt_input, dt_holidays,
       dep_var, date_var,
       context_vars, paid_media_spends,
-      organic_vars)
+      organic_vars
+    )
+
+    ## Check for NA and all negative values
+    dt_input <- check_allneg(dt_input)
+    check_nas(dt_input, c(paid_media_vars, paid_media_spends, context_vars, organic_vars))
+    check_nas(dt_holidays)
 
     ## Check date input (and set dayInterval and intervalType)
     # date_input <- check_datevar(dt_input, date_var)
@@ -223,11 +232,10 @@ robyn_inputs <- function(dt_input = NULL,
     context <- check_context(dt_input, context_vars, context_signs)
     context_signs <- context$context_signs
 
-    ## Check paid media variables (set mediaVarCount and maybe transform paid_media_signs)
+    ## Check paid media variables (and maybe transform paid_media_signs)
     if (is.null(paid_media_vars)) paid_media_vars <- paid_media_spends
     paidmedia <- check_paidmedia(dt_input, paid_media_vars, paid_media_signs, paid_media_spends)
     paid_media_signs <- paidmedia$paid_media_signs
-    mediaVarCount <- paidmedia$mediaVarCount
     exposure_vars <- paid_media_vars[!(paid_media_vars == paid_media_spends)]
 
     ## Check organic media variables (and maybe transform organic_signs)
@@ -247,9 +255,7 @@ robyn_inputs <- function(dt_input = NULL,
 
     ## Check window_start & window_end (and transform parameters/data)
     windows <- check_windows(dt_input, date_var, all_media, window_start, window_end)
-
     if (TRUE) {
-      dt_input <- windows$dt_input
       window_start <- windows$window_start
       rollingWindowStartWhich <- windows$rollingWindowStartWhich
       refreshAddedStart <- windows$refreshAddedStart
@@ -276,9 +282,14 @@ robyn_inputs <- function(dt_input = NULL,
     check_novar(select(dt_input, -all_of(unused_vars)))
 
     # Calculate total media spend used to model
-    paid_media_total <- dt_input[
-      rollingWindowEndWhich:rollingWindowLength, ] %>%
-      select(paid_media_vars) %>% sum()
+    paid_media_total <- dt_input %>%
+      mutate(temp_date = dt_input[[date_var]]) %>%
+      filter(
+        .data$temp_date >= window_start,
+        .data$temp_date <= window_end
+      ) %>%
+      select(all_of(paid_media_spends)) %>%
+      sum()
 
     ## Collect input
     InputCollect <- list(
@@ -301,7 +312,6 @@ robyn_inputs <- function(dt_input = NULL,
       paid_media_signs = paid_media_signs,
       paid_media_spends = paid_media_spends,
       paid_media_total = paid_media_total,
-      mediaVarCount = mediaVarCount,
       exposure_vars = exposure_vars,
       organic_vars = organic_vars,
       organic_signs = organic_signs,
@@ -314,7 +324,7 @@ robyn_inputs <- function(dt_input = NULL,
       window_end = window_end,
       rollingWindowEndWhich = rollingWindowEndWhich,
       rollingWindowLength = rollingWindowLength,
-      totalObservations = nrow(dt_input),
+      totalObservations = nrow(windows$dt_input),
       refreshAddedStart = refreshAddedStart,
       adstock = adstock,
       hyperparameters = hyperparameters,
@@ -328,7 +338,8 @@ robyn_inputs <- function(dt_input = NULL,
 
       ## Check hyperparameters
       hyperparameters <- check_hyperparameters(
-        hyperparameters, adstock, paid_media_spends, organic_vars, exposure_vars
+        hyperparameters, adstock, paid_media_spends, organic_vars,
+        exposure_vars, prophet_vars, context_vars
       )
       InputCollect <- robyn_engineering(InputCollect, ...)
     }
@@ -404,7 +415,7 @@ print.robyn_inputs <- function(x, ...) {
   mod_vars <- paste(setdiff(names(x$dt_mod), c("ds", "dep_var")), collapse = ", ")
   print(glued(
     "
-Total Observations: {nrow(x$dt_input)} ({x$intervalType}s)
+Total Observations: {x$totalObservations} ({x$intervalType}s)
 Input Table Columns ({ncol(x$dt_input)}):
   Date: {x$date_var}
   Dependent: {x$dep_var} [{x$dep_var_type}]
@@ -427,7 +438,10 @@ Adstock: {x$adstock}
     windows = paste(x$window_start, x$window_end, sep = ":"),
     custom_params = if (length(x$custom_params) > 0) paste("\n", flatten_hyps(x$custom_params)) else "None",
     prophet = if (length(x$prophet_vars) > 0) {
-      sprintf("%s on %s", paste(x$prophet_vars, collapse = ", "), x$prophet_country)
+      sprintf(
+        "%s on %s", paste(x$prophet_vars, collapse = ", "),
+        ifelse(!is.null(x$prophet_country), x$prophet_country, "data")
+      )
     } else {
       "\033[0;31mDeactivated\033[0m"
     },
@@ -463,24 +477,24 @@ Adstock: {x$adstock}
 #'    needs to be specified in \code{paid_media_spends} specifically. Run \code{hyper_names()}
 #'    to get correct hyperparameter names. All names in hyperparameters must
 #'    equal names from \code{hyper_names()}, case sensitive.
-#'    \item{Get guidance for setting hyperparameter bounds:
+#'    \item Get guidance for setting hyperparameter bounds:
 #'    For geometric adstock, use theta, alpha & gamma. For both weibull adstock options,
-#'    use shape, scale, alpha, gamma.}
+#'    use shape, scale, alpha, gamma.
 #'    \itemize{
-#'    \item{Theta: }{In geometric adstock, theta is decay rate. guideline for usual media genre:
-#'    TV c(0.3, 0.8), OOH/Print/Radio c(0.1, 0.4), digital c(0, 0.3)}
-#'    \item{Shape: }{In weibull adstock, shape controls the decay shape. Recommended c(0.0001, 2).
+#'      \item Theta: In geometric adstock, theta is decay rate. guideline for usual media genre:
+#'    TV c(0.3, 0.8), OOH/Print/Radio c(0.1, 0.4), digital c(0, 0.3)
+#'      \item Shape: In weibull adstock, shape controls the decay shape. Recommended c(0.0001, 2).
 #'    The larger, the more S-shape. The smaller, the more L-shape. Channel-type specific
-#'    values still to be investigated}
-#'    \item{Scale: }{In weibull adstock, scale controls the decay inflexion point. Very conservative
+#'    values still to be investigated
+#'      \item Scale: In weibull adstock, scale controls the decay inflexion point. Very conservative
 #'    recommended bounce c(0, 0.1), because scale can increase adstocking half-life greatly.
-#'    Channel-type specific values still to be investigated}
-#'    \item{Gamma: }{In s-curve transformation with hill function, gamma controls the inflexion point.
+#'    Channel-type specific values still to be investigated
+#'      \item Gamma: In s-curve transformation with hill function, gamma controls the inflexion point.
 #'    Recommended bounce c(0.3, 1). The larger the gamma, the later the inflection point
-#'    in the response curve}
+#'    in the response curve
 #'    }
-#'    \item{Set each hyperparameter bounds. They either contains two values e.g. c(0, 0.5),
-#'    or only one value (in which case you've "fixed" that hyperparameter)}
+#'    \item Set each hyperparameter bounds. They either contains two values e.g. c(0, 0.5),
+#'    or only one value (in which case you've "fixed" that hyperparameter)
 #' }
 #'
 #' @section Helper plots:
@@ -495,6 +509,7 @@ Adstock: {x$adstock}
 #' Accepts "geometric", "weibull_cdf" or "weibull_pdf"
 #' @param all_media Character vector. Default to \code{InputCollect$all_media}.
 #' Includes \code{InputCollect$paid_media_spends} and \code{InputCollect$organic_vars}.
+#' @param all_vars Used to check the penalties inputs, especially for refreshing models.
 #' @examples
 #' \donttest{
 #' media <- c("facebook_S", "print_S", "tv_S")
@@ -532,7 +547,7 @@ Adstock: {x$adstock}
 #' }
 #' @return Character vector. Names of hyper-parameters that should be defined.
 #' @export
-hyper_names <- function(adstock, all_media) {
+hyper_names <- function(adstock, all_media, all_vars = NULL) {
   adstock <- check_adstock(adstock)
   if (adstock == "geometric") {
     local_name <- sort(apply(expand.grid(all_media, HYPS_NAMES[
@@ -542,6 +557,9 @@ hyper_names <- function(adstock, all_media) {
     local_name <- sort(apply(expand.grid(all_media, HYPS_NAMES[
       grepl("shapes|scales|alphas|gammas", HYPS_NAMES)
     ]), 1, paste, collapse = "_"))
+  }
+  if (!is.null(all_vars)) {
+    local_name <- sort(c(local_name, paste0(all_vars, "_penalty")))
   }
   return(local_name)
 }
@@ -614,7 +632,7 @@ robyn_engineering <- function(x, quiet = FALSE, ...) {
     mediaCostFactor <- colSums(subset(dt_inputRollWind, select = paid_media_spends), na.rm = TRUE) /
       colSums(subset(dt_inputRollWind, select = paid_media_vars), na.rm = TRUE)
 
-    for (i in 1:InputCollect$mediaVarCount) {
+    for (i in seq_along(paid_media_spends)) {
       if (exposure_selector[i]) {
         # Run models (NLS and/or LM)
         dt_spendModInput <- subset(dt_inputRollWind, select = c(paid_media_spends[i], paid_media_vars[i]))
@@ -973,7 +991,6 @@ set_holidays <- function(dt_transform, dt_holidays, intervalType) {
 
   if (intervalType == "week") {
     weekStartInput <- lubridate::wday(dt_transform$ds[1], week_start = 1)
-    if (!weekStartInput %in% c(1, 7)) stop("Week start has to be Monday or Sunday")
     holidays <- dt_holidays %>%
       mutate(ds = floor_date(as.Date(.data$ds, origin = "1970-01-01"), unit = "week", week_start = weekStartInput)) %>%
       select(.data$ds, .data$holiday, .data$country, .data$year) %>%

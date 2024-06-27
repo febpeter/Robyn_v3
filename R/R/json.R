@@ -6,7 +6,7 @@
 ####################################################################
 #' Import and Export Robyn JSON files
 #'
-#' \code{robyn_write()} generates JSON files with all the information
+#' \code{robyn_write()} generates light JSON files with all the information
 #' required to replicate Robyn models. Depending on user inputs, there are
 #' 3 use cases: only the inputs data, input data + modeling results data,
 #' and input data, modeling results + specifics of a single selected model.
@@ -17,6 +17,8 @@
 #' @param InputCollect \code{robyn_inputs()} output.
 #' @param select_model Character. Which model ID do you want to export
 #' into the JSON file?
+#' @param add_data Boolean. Include raw dataset. Useful to recreate models
+#' with a single file containing all the required information (no need of CSV).
 #' @param dir Character. Existing directory to export JSON file to.
 #' @param pareto_df Dataframe. Save all pareto solutions to json file.
 #' @param ... Additional parameters to export into a custom Extras element.
@@ -24,7 +26,6 @@
 #' \dontrun{
 #' InputCollectJSON <- robyn_inputs(
 #'   dt_input = Robyn::dt_simulated_weekly,
-#'   dt_holidays = Robyn::dt_prophet_holidays,
 #'   json_file = "~/Desktop/RobynModel-1_29_12.json"
 #' )
 #' print(InputCollectJSON)
@@ -36,6 +37,7 @@ robyn_write <- function(InputCollect,
                         OutputCollect = NULL,
                         select_model = NULL,
                         dir = OutputCollect$plot_folder,
+                        add_data = TRUE,
                         export = TRUE,
                         quiet = FALSE,
                         pareto_df = NULL,
@@ -59,7 +61,6 @@ robyn_write <- function(InputCollect,
 
   # ExportedModel JSON
   if (!is.null(OutputCollect)) {
-
     # Modeling associated data
     collect <- list()
     collect$ts_validation <- OutputCollect$OutputModels$ts_validation
@@ -69,12 +70,13 @@ robyn_write <- function(InputCollect,
     collect$outputs_time <- sprintf("%s min", attr(OutputCollect, "runTime"))
     collect$total_time <- sprintf(
       "%s min", attr(OutputCollect, "runTime") +
-        attr(OutputCollect$OutputModels, "runTime"))
+        attr(OutputCollect$OutputModels, "runTime")
+    )
     collect$total_iters <- OutputCollect$OutputModels$iterations *
       OutputCollect$OutputModels$trials
     collect$conv_msg <- gsub("\\:.*", "", OutputCollect$OutputModels$convergence$conv_msg)
     if ("clusters" %in% names(OutputCollect)) {
-      collect$clusters <- OutputCollect$clusters$n_clusters
+      collect$n_clusters <- OutputCollect$clusters$n_clusters
     }
 
     skip <- which(unlist(lapply(OutputCollect, function(x) is.list(x) | is.null(x))))
@@ -87,10 +89,23 @@ robyn_write <- function(InputCollect,
       stopifnot(select_model %in% OutputCollect$allSolutions)
       outputs <- list()
       outputs$select_model <- select_model
-      outputs$summary <- filter(OutputCollect$xDecompAgg, .data$solID == select_model) %>%
+      df <- filter(OutputCollect$xDecompAgg, .data$solID == select_model)
+      perf_metric <- ifelse(InputCollect$dep_var_type == "revenue", "ROAS", "CPA")
+      outputs$performance <- df %>%
+        filter(.data$rn %in% InputCollect$paid_media_spends) %>%
+        group_by(.data$solID) %>%
+        summarise(
+          metric = perf_metric,
+          performance = ifelse(
+            perf_metric == "ROAS",
+            sum(.data$xDecompAgg) / sum(.data$total_spend),
+            sum(.data$total_spend) / sum(.data$xDecompAgg)
+          ), .groups = "drop"
+        )
+      outputs$summary <- df %>%
         mutate(
-          metric = ifelse(InputCollect$dep_var_type == "revenue", "ROI", "CPA"),
-          performance = ifelse(.data$metric == "ROI", .data$roi_total, .data$cpa_total)
+          metric = perf_metric,
+          performance = ifelse(.data$metric == "ROAS", .data$roi_total, .data$cpa_total)
         ) %>%
         select(
           variable = .data$rn, coef = .data$coef,
@@ -106,6 +121,14 @@ robyn_write <- function(InputCollect,
         select(order(colnames(.))) %>%
         as.list()
       outputs$hyper_updated <- OutputCollect$hyper_updated
+      if ("clusters" %in% names(OutputCollect)) {
+        outputs$clusters <- list(
+          data = OutputCollect$clusters$data %>%
+            group_by(.data$cluster) %>% mutate(n = n()) %>%
+            filter(.data$solID == select_model) %>%
+            select(any_of(c("solID", "cluster", "n")))
+        )
+      }
       ret[["ExportedModel"]] <- outputs
     } else {
       select_model <- "models"
@@ -114,8 +137,12 @@ robyn_write <- function(InputCollect,
     select_model <- "inputs"
   }
 
-  if (length(list(...)) > 0) {
-    ret[["Extras"]] <- list(...)
+  extras <- list(...)
+  if (isTRUE(add_data) & !"raw_data" %in% names(extras)) {
+    extras[["raw_data"]] <- as_tibble(InputCollect$dt_input)
+  }
+  if (length(extras) > 0) {
+    ret[["Extras"]] <- extras
   }
 
   if (!dir.exists(dir) & export) dir.create(dir, recursive = TRUE)
@@ -124,12 +151,13 @@ robyn_write <- function(InputCollect,
   class(ret) <- c("robyn_write", class(ret))
   attr(ret, "json_file") <- filename
   if (export) {
-    if (!quiet) message(sprintf(">> Exported model %s as %s", select_model, filename))
+    if (!quiet) message(sprintf(">> Exported %s as %s", select_model, filename))
     if (!is.null(pareto_df)) {
       if (!all(c("solID", "cluster") %in% names(pareto_df))) {
         warning(paste(
           "Input 'pareto_df' is not a valid data.frame;",
-          "must contain 'solID' and 'cluster' columns."))
+          "must contain 'solID' and 'cluster' columns."
+        ))
       } else {
         all_c <- unique(pareto_df$cluster)
         pareto_df <- lapply(all_c, function(x) {
@@ -150,7 +178,7 @@ robyn_write <- function(InputCollect,
 #' @param x \code{robyn_read()} or \code{robyn_write()} output.
 #' @export
 print.robyn_write <- function(x, ...) {
-  val <- isTRUE(x$ExportedModel$ts_validation)
+  val <- any(c(x$ExportedModel$ts_validation, x$ModelsCollect$ts_validation))
   print(glued(
     "
    Exported directory: {x$ExportedModel$plot_folder}
@@ -165,12 +193,15 @@ print.robyn_write <- function(x, ...) {
   ))
   errors <- x$ExportedModel$errors
   print(glued(
-    "\n\nModel's Performance and Errors:\n    {errors}",
+    "\n\nModel's Performance and Errors:\n    {performance}{errors}",
+    performance = ifelse("performance" %in% names(x$ExportedModel), sprintf(
+      "Total Model %s = %s\n    ",
+      x$ExportedModel$performance$metric, signif(x$ExportedModel$performance$performance, 4)
+    ), ""),
     errors = paste(
       sprintf(
-        "Adj.R2 (%s): %s",
-        ifelse(!val, "train", "test"),
-        ifelse(!val, signif(errors$rsq_train, 4), signif(errors$rsq_test, 4))
+        "Adj.R2 (train): %s",
+        signif(errors$rsq_train, 4)
       ),
       "| NRMSE =", signif(errors$nrmse, 4),
       "| DECOMP.RSSD =", signif(errors$decomp.rssd, 4),
@@ -178,41 +209,43 @@ print.robyn_write <- function(x, ...) {
     )
   ))
 
-  print(glued("\n\nSummary Values on Selected Model:"))
+  if ("ExportedModel" %in% names(x)) {
+    print(glued("\n\nSummary Values on Selected Model:"))
 
-  print(x$ExportedModel$summary %>%
-    select(-contains("boot"), -contains("ci_")) %>%
-    dplyr::rename_at("performance", list(~ ifelse(x$InputCollect$dep_var_type == "revenue", "ROI", "CPA"))) %>%
-    mutate(decompPer = formatNum(100 * .data$decompPer, pos = "%")) %>%
-    dplyr::mutate_if(is.numeric, function(x) ifelse(!is.infinite(x), x, 0)) %>%
-    dplyr::mutate_if(is.numeric, function(x) formatNum(x, 4, abbr = TRUE)) %>%
-    replace(., . == "NA", "-") %>% as.data.frame())
+    print(x$ExportedModel$summary %>%
+      select(-contains("boot"), -contains("ci_")) %>%
+      dplyr::rename_at("performance", list(~ ifelse(x$InputCollect$dep_var_type == "revenue", "ROAS", "CPA"))) %>%
+      mutate(decompPer = formatNum(100 * .data$decompPer, pos = "%")) %>%
+      dplyr::mutate_if(is.numeric, function(x) ifelse(!is.infinite(x), x, 0)) %>%
+      dplyr::mutate_if(is.numeric, function(x) formatNum(x, 4, abbr = TRUE)) %>%
+      replace(., . == "NA", "-") %>% as.data.frame())
 
-  print(glued(
-    "\n\nHyper-parameters:\n    Adstock: {x$InputCollect$adstock}"
-  ))
+    print(glued(
+      "\n\nHyper-parameters:\n    Adstock: {x$InputCollect$adstock}"
+    ))
 
-  # Nice and tidy table format for hyper-parameters
-  HYPS_NAMES <- c(HYPS_NAMES, "penalty")
-  regex <- paste(paste0("_", HYPS_NAMES), collapse = "|")
-  hyper_df <- as.data.frame(x$ExportedModel$hyper_values) %>%
-    select(-contains("lambda"), -any_of(HYPS_OTHERS)) %>%
-    tidyr::gather() %>%
-    tidyr::separate(.data$key,
-      into = c("channel", "none"),
-      sep = regex, remove = FALSE
-    ) %>%
-    mutate(hyperparameter = gsub("^.*_", "", .data$key)) %>%
-    select(.data$channel, .data$hyperparameter, .data$value) %>%
-    tidyr::spread(key = "hyperparameter", value = "value")
-  print(hyper_df)
+    # Nice and tidy table format for hyper-parameters
+    HYPS_NAMES <- c(HYPS_NAMES, "penalty")
+    regex <- paste(paste0("_", HYPS_NAMES), collapse = "|")
+    hyper_df <- as.data.frame(x$ExportedModel$hyper_values) %>%
+      select(-contains("lambda"), -any_of(HYPS_OTHERS)) %>%
+      tidyr::gather() %>%
+      tidyr::separate(.data$key,
+        into = c("channel", "none"),
+        sep = regex, remove = FALSE
+      ) %>%
+      mutate(hyperparameter = gsub("^.*_", "", .data$key)) %>%
+      select(.data$channel, .data$hyperparameter, .data$value) %>%
+      tidyr::spread(key = "hyperparameter", value = "value")
+    print(hyper_df)
+  }
 }
 
 
 #' @rdname robyn_write
 #' @aliases robyn_write
-#' @param json_file Character. JSON file name to read and import as list.
-#' @param step Integer. 1 for import only and 2 for import and ouput.
+#' @param json_file Character. JSON file name to read and import.
+#' @param step Integer. 1 for import only and 2 for import and output.
 #' @export
 robyn_read <- function(json_file = NULL, step = 1, quiet = FALSE, ...) {
   if (!is.null(json_file)) {
@@ -300,7 +333,7 @@ Adstock: {a$adstock}
 #' @export
 robyn_recreate <- function(json_file, quiet = FALSE, ...) {
   json <- robyn_read(json_file, quiet = TRUE)
-  message(">>> Recreating model ", json$ExportedModel$select_model)
+  message(">>> Recreating ", json$ExportedModel$select_model)
   args <- list(...)
   if (!"InputCollect" %in% names(args)) {
     InputCollect <- robyn_inputs(
@@ -308,13 +341,17 @@ robyn_recreate <- function(json_file, quiet = FALSE, ...) {
       quiet = quiet,
       ...
     )
-    OutputCollect <- robyn_run(
-      InputCollect = InputCollect,
-      json_file = json_file,
-      export = FALSE,
-      quiet = quiet,
-      ...
-    )
+    if (!is.null(json$ExportedModel$select_model)) {
+      OutputCollect <- robyn_run(
+        InputCollect = InputCollect,
+        json_file = json_file,
+        export = FALSE,
+        quiet = quiet,
+        ...
+      )
+    } else {
+      OutputCollect <- NULL
+    }
   } else {
     # Use case: skip feature engineering when InputCollect is provided
     InputCollect <- args[["InputCollect"]]
@@ -327,7 +364,8 @@ robyn_recreate <- function(json_file, quiet = FALSE, ...) {
   }
   return(invisible(list(
     InputCollect = InputCollect,
-    OutputCollect = OutputCollect
+    OutputCollect = OutputCollect,
+    Extras = json[["Extras"]]
   )))
 }
 
@@ -337,22 +375,51 @@ robyn_chain <- function(json_file) {
   ids <- c(json_data$InputCollect$refreshChain, json_data$ExportedModel$select_model)
   plot_folder <- json_data$ExportedModel$plot_folder
   temp <- str_split(plot_folder, "/")[[1]]
-  chain <- temp[startsWith(temp, "Robyn_")]
+  chain <- temp[startsWith(temp, "Robyn_") & grepl("_init+$|_rf[0-9]+$", temp)]
   if (length(chain) == 0) chain <- tail(temp[temp != ""], 1)
+  avlb <- NULL
+  if (length(ids) != length(chain)) {
+    temp <- list.files(plot_folder)
+    mods <- unique(temp[
+      (startsWith(temp, "RobynModel") | grepl("\\.json+$", temp)) &
+        grepl("^[^_]*_[^_]*_[^_]*$", temp)
+    ])
+    avlb <- gsub("RobynModel-|\\.json", "", mods)
+    if (length(ids) == length(mods)) {
+      chain <- rep_len(chain, length(mods))
+    }
+  }
   base_dir <- gsub(sprintf("\\/%s.*", chain[1]), "", plot_folder)
   chainData <- list()
-  for (i in rev(seq_along(chain))) {
-    if (i == length(chain)) {
+  for (i in rev(seq_along(ids))) {
+    if (i == length(ids)) {
       json_new <- json_data
     } else {
       file <- paste0("RobynModel-", json_new$InputCollect$refreshSourceID, ".json")
       filename <- paste(c(base_dir, chain[1:i], file), collapse = "/")
-      json_new <- robyn_read(filename, quiet = TRUE)
+      if (file.exists(filename)) {
+        json_new <- robyn_read(filename, quiet = TRUE)
+      } else {
+        if (ids[i] %in% avlb) {
+          filename <- mods[avlb == ids[i]]
+          json_new <- robyn_read(filename, quiet = TRUE)
+        } else {
+          last_try <- gsub(chain[1], "", filename)
+          if (file.exists(last_try)) {
+            json_new <- robyn_read(last_try, quiet = TRUE)
+            message("Stored original model in new file: ", filename)
+            jsonlite::write_json(json_new, filename, pretty = TRUE)
+          } else {
+            message("Skipping chain. File can't be found: ", filename)
+          }
+        }
+      }
     }
     chainData[[json_new$ExportedModel$select_model]] <- json_new
   }
   chainData <- chainData[rev(seq_along(chain))]
   dirs <- unlist(lapply(chainData, function(x) x$ExportedModel$plot_folder))
+  dirs[!dir.exists(dirs)] <- plot_folder
   json_files <- paste0(dirs, "RobynModel-", names(dirs), ".json")
   attr(chainData, "json_files") <- json_files
   attr(chainData, "chain") <- ids # names(chainData)
