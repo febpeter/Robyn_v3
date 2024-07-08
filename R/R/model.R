@@ -863,9 +863,9 @@ robyn_mmm <- function(InputCollect,
               nrmse_test = mod_out$nrmse_test,
               nrmse = nrmse,
               decomp.rssd = decomp.rssd,
-              mape_train = mod_out$mape_train,
-              mape_test = mod_out$mape_test,
-              mape_val = mod_out$mape_val,
+              MAPE_train = mod_out$MAPE_train,
+              MAPE_test = mod_out$MAPE_test,
+              MAPE_val = mod_out$MAPE_val,
               mape = mape,
               lambda = lambda_scaled,
               lambda_hp = lambda_hp,
@@ -929,7 +929,7 @@ robyn_mmm <- function(InputCollect,
           nrmse.collect <- unlist(lapply(doparCollect, function(x) x$nrmse))
           decomp.rssd.collect <- unlist(lapply(doparCollect, function(x) x$decomp.rssd))
           mape.lift.collect <- unlist(lapply(doparCollect, function(x) x$mape))
-          mape.collect <- unlist(lapply(doparCollect, function(x) x$mape))
+          MAPE.collect <- unlist(lapply(doparCollect, function(x) x$MAPE))
 
           #####################################
           #### Nevergrad tells objectives
@@ -937,7 +937,7 @@ robyn_mmm <- function(InputCollect,
           if (!hyper_fixed) {
             if (is.null(calibration_input)) {
               for (co in 1:iterPar) {
-                optimizer$tell(nevergrad_hp[[co]], tuple(nrmse.collect[co], mape.collect[col]))
+                optimizer$tell(nevergrad_hp[[co]], tuple(nrmse.collect[co], MAPE.collect[col]))
               }
             } else {
               for (co in 1:iterPar) {
@@ -1176,12 +1176,12 @@ model_refit <- function(x_train, y_train, x_val, y_val, x_test, y_test,
   }
 
   ## Adding MAPE
-  mape_train <- mean(abs((y_train - y_train_pred)/(y_train)))
+  MAPE_train <- mean(abs((y_train - y_train_pred)/(y_train)))
   if (!is.null(x_val)) {
-    mape_val <- mean(abs((y_val - y_val_pred)/(y_val)))
-    mape_test <- mean(abs((y_test - y_test_pred)/(y_test)))
+    MAPE_val <- mean(abs((y_val - y_val_pred)/(y_val)))
+    MAPE_test <- mean(abs((y_test - y_test_pred)/(y_test)))
   } else {
-    mape_val <- mape_test <- y_val_pred <- y_test_pred <- NA
+    MAPE_val <- MAPE_test <- y_val_pred <- y_test_pred <- NA
   }
   
   # Calculate all NRMSE
@@ -1197,9 +1197,9 @@ model_refit <- function(x_train, y_train, x_val, y_val, x_test, y_test,
     rsq_train = rsq_train,
     rsq_val = rsq_val,
     rsq_test = rsq_test,
-    mape_train = mape_train,
-    mape_val = mape_val,
-    mape_test = mape_test,
+    MAPE_train = MAPE_train,
+    MAPE_val = MAPE_val,
+    MAPE_test = MAPE_test,
     nrmse_train = nrmse_train,
     nrmse_val = nrmse_val,
     nrmse_test = nrmse_test,
