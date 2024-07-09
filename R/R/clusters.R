@@ -68,7 +68,7 @@ robyn_clusters <- function(input, dep_var_type,
     ))
   }
 
-  ignore <- c("solID", "mape", "MAPE_train", "MAPE_val", "MAPE_test","decomp.rssd", "nrmse", "nrmse_test", "nrmse_train", "nrmse_val", "pareto")
+  ignore <- c("solID", "mape", "MAPE", "MAPE_train", "MAPE_val", "MAPE_test","decomp.rssd", "nrmse", "nrmse_test", "nrmse_train", "nrmse_val", "pareto")
 
   # Auto K selected by less than 5% WSS variance (convergence)
   min_clusters <- 3
@@ -279,7 +279,7 @@ confidence_calcs <- function(
 
 errors_scores <- function(df, balance = rep(1, 3), ts_validation = TRUE, ...) {
   stopifnot(length(balance) == 3)
-  error_cols <- c(ifelse(ts_validation, "nrmse_test", "nrmse_train"), "decomp.rssd", "mape")
+  error_cols <- c(ifelse(ts_validation, "nrmse_test", "nrmse_train"), ifelse(ts_validation, "MAPE_test", "MAPE_train"), "mape")
   stopifnot(all(error_cols %in% colnames(df)))
   balance <- balance / sum(balance)
   scores <- df %>%
@@ -287,24 +287,24 @@ errors_scores <- function(df, balance = rep(1, 3), ts_validation = TRUE, ...) {
     rename("nrmse" = 1) %>%
     mutate(
       nrmse = ifelse(is.infinite(.data$nrmse), max(is.finite(.data$nrmse)), .data$nrmse),
-      decomp.rssd = ifelse(is.infinite(.data$decomp.rssd), max(is.finite(.data$decomp.rssd)), .data$decomp.rssd),
+      MAPE = ifelse(is.infinite(.data$MAPE), max(is.finite(.data$MAPE)), .data$MAPE),
       mape = ifelse(is.infinite(.data$mape), max(is.finite(.data$mape)), .data$mape)
     ) %>%
     # Force normalized values so they can be comparable
     mutate(
       nrmse_n = .min_max_norm(.data$nrmse),
-      decomp.rssd_n = .min_max_norm(.data$decomp.rssd),
+      MAPE_n = .min_max_norm(.data$MAPE),
       mape_n = .min_max_norm(.data$mape)
     ) %>%
     replace(., is.na(.), 0) %>%
     # Balance to give more or less importance to each error
     mutate(
       nrmse_w = balance[1] * .data$nrmse_n,
-      decomp.rssd_w = balance[2] * .data$decomp.rssd_n,
+      MAPE_w = balance[2] * .data$MAPE_n,
       mape_w = balance[3] * .data$mape_n
     ) %>%
     # Calculate error score
-    mutate(error_score = sqrt(.data$nrmse_w^2 + .data$decomp.rssd_w^2 + .data$mape_w^2)) %>%
+    mutate(error_score = sqrt(.data$nrmse_w^2 + .data$MAPE_w^2 + .data$mape_w^2)) %>%
     pull(.data$error_score)
   return(scores)
 }
@@ -327,14 +327,14 @@ errors_scores <- function(df, balance = rep(1, 3), ts_validation = TRUE, ...) {
         select(any_of(c("solID", all_media)))
     }
     errors <- distinct(
-      x, .data$solID, starts_with("nrmse"), .data$decomp.rssd, .data$mape
+      x, .data$solID, starts_with("nrmse"), starts_with("MAPE"), .data$mape
     )
     outcome <- left_join(outcome, errors, "solID") %>% ungroup()
   } else {
     if (cluster_by == "hyperparameters") {
       outcome <- select(
         x, .data$solID, contains(HYPS_NAMES),
-        contains(c("nrmse", "decomp.rssd", "mape"))
+        contains(c("nrmse", "MAPE", "mape"))
       ) %>%
         removenacols(all = FALSE)
     }
@@ -412,16 +412,16 @@ errors_scores <- function(df, balance = rep(1, 3), ts_validation = TRUE, ...) {
         "[%s.%s]", .data$cluster, .data$rank
       ), NA)
     ) %>%
-    ggplot(aes(x = .data$nrmse, y = .data$decomp.rssd)) +
+    ggplot(aes(x = .data$nrmse, y = .data$MAPE)) +
     geom_point(aes(colour = .data$cluster, alpha = .data$alpha)) +
     geom_text(aes(label = .data$label), na.rm = TRUE, hjust = -0.3) +
     guides(alpha = "none", colour = "none") +
     labs(
       title = paste("Selecting Top", limit, "Performing Models by Cluster"),
       subtitle = "Based on minimum (weighted) distance to origin",
-      x = "NRMSE", y = "DECOMP.RSSD",
+      x = "NRMSE", y = "MAPE",
       caption = sprintf(
-        "Weights: NRMSE %s%%, DECOMP.RSSD %s%%, MAPE %s%%",
+        "Weights: NRMSE %s%%, MAPE %s%%, mape %s%%",
         round(100 * balance[1]), round(100 * balance[2]), round(100 * balance[3])
       )
     ) +
@@ -429,7 +429,7 @@ errors_scores <- function(df, balance = rep(1, 3), ts_validation = TRUE, ...) {
 }
 
 .plot_topsols_rois <- function(df, top_sols, all_media, limit = 1) {
-  real_rois <- as.data.frame(df)[, -c(which(colnames(df) %in% c("mape", "nrmse", "decomp.rssd")))]
+  real_rois <- as.data.frame(df)[, -c(which(colnames(df) %in% c("mape", "nrmse", "MAPE")))]
   colnames(real_rois) <- paste0("real_", colnames(real_rois))
   top_sols %>%
     left_join(real_rois, by = c("solID" = "real_solID")) %>%
