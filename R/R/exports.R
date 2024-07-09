@@ -146,7 +146,8 @@ print.robyn_save <- function(x, ...) {
       ),
       "| NRMSE =", signif(x$errors$nrmse, 4),
       "| DECOMP.RSSD =", signif(x$errors$decomp.rssd, 4),
-      "| MAPE =", signif(x$errors$mape, 4)
+      "| MAPE =", signif(x$errors$MAPE, 4),
+      "| mape =", signif(x$errors$mape, 4)
     )
   ))
 
