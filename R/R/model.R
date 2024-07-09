@@ -772,7 +772,7 @@ robyn_mmm <- function(InputCollect,
               refreshAddedStart = refreshAddedStart
             )
             nrmse <- ifelse(ts_validation, mod_out$nrmse_val, mod_out$nrmse_train)
-            MAPE = ifelse(ts_validation, mod_out$MAPE_val, mod_out$MAPE_train)
+            # MAPE = ifelse(ts_validation, mod_out$MAPE_val, mod_out$MAPE_train)
             mape <- 0
             df.int <- mod_out$df.int
 
@@ -865,9 +865,6 @@ robyn_mmm <- function(InputCollect,
               nrmse = nrmse,
               decomp.rssd = decomp.rssd,
               MAPE_train = mod_out$MAPE_train,
-              MAPE_test = mod_out$MAPE_test,
-              MAPE_val = mod_out$MAPE_val,
-              MAPE = MAPE,
               mape = mape,
               lambda = lambda_scaled,
               lambda_hp = lambda_hp,
@@ -931,7 +928,7 @@ robyn_mmm <- function(InputCollect,
           nrmse.collect <- unlist(lapply(doparCollect, function(x) x$nrmse))
           decomp.rssd.collect <- unlist(lapply(doparCollect, function(x) x$decomp.rssd))
           mape.lift.collect <- unlist(lapply(doparCollect, function(x) x$mape))
-          MAPE.collect <- unlist(lapply(doparCollect, function(x) x$MAPE))
+          MAPE.collect <- unlist(lapply(doparCollect, function(x) x$MAPE_train))
 
           #####################################
           #### Nevergrad tells objectives
@@ -1179,12 +1176,6 @@ model_refit <- function(x_train, y_train, x_val, y_val, x_test, y_test,
 
   ## Adding MAPE
   MAPE_train <- mean(abs((y_train - y_train_pred)/(y_train)))
-  if (!is.null(x_val)) {
-    MAPE_val <- mean(abs((y_val - y_val_pred)/(y_val)))
-    MAPE_test <- mean(abs((y_test - y_test_pred)/(y_test)))
-  } else {
-    MAPE_val <- MAPE_test <- y_val_pred <- y_test_pred <- NA
-  }
   
   
   # Calculate all NRMSE
@@ -1201,8 +1192,6 @@ model_refit <- function(x_train, y_train, x_val, y_val, x_test, y_test,
     rsq_val = rsq_val,
     rsq_test = rsq_test,
     MAPE_train = MAPE_train,
-    MAPE_val = MAPE_val,
-    MAPE_test = MAPE_test,
     nrmse_train = nrmse_train,
     nrmse_val = nrmse_val,
     nrmse_test = nrmse_test,
