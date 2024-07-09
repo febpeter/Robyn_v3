@@ -853,6 +853,8 @@ robyn_mmm <- function(InputCollect,
             #### Collect Multi-Objective Errors and Iteration Results
             resultCollect <- list()
 
+            MAPE = ifelse(ts_validation, mod_out$MAPE_val, mod_out$MAPE_train)
+            
             # Auxiliary dynamic vector
             common <- data.frame(
               rsq_train = mod_out$rsq_train,
@@ -866,6 +868,7 @@ robyn_mmm <- function(InputCollect,
               MAPE_train = mod_out$MAPE_train,
               MAPE_test = mod_out$MAPE_test,
               MAPE_val = mod_out$MAPE_val,
+              MAPE = MAPE,
               mape = mape,
               lambda = lambda_scaled,
               lambda_hp = lambda_hp,
