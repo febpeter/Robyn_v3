@@ -772,6 +772,7 @@ robyn_mmm <- function(InputCollect,
               refreshAddedStart = refreshAddedStart
             )
             nrmse <- ifelse(ts_validation, mod_out$nrmse_val, mod_out$nrmse_train)
+            MAPE = ifelse(ts_validation, mod_out$MAPE_val, mod_out$MAPE_train)
             mape <- 0
             df.int <- mod_out$df.int
 
@@ -866,7 +867,7 @@ robyn_mmm <- function(InputCollect,
               MAPE_train = mod_out$MAPE_train,
               MAPE_test = mod_out$MAPE_test,
               MAPE_val = mod_out$MAPE_val,
-              MAPE = mod_out$MAPE,
+              MAPE = MAPE,
               mape = mape,
               lambda = lambda_scaled,
               lambda_hp = lambda_hp,
@@ -911,7 +912,7 @@ robyn_mmm <- function(InputCollect,
           ########### Parallel start
           nrmse.collect <- NULL
           decomp.rssd.collect <- NULL
-          mape.collect <- NULL
+          MAPE.collect <- NULL
           best_mape <- Inf
           if (cores == 1) {
             doparCollect <- lapply(1:iterPar, robyn_iterations)
@@ -1184,7 +1185,7 @@ model_refit <- function(x_train, y_train, x_val, y_val, x_test, y_test,
   } else {
     MAPE_val <- MAPE_test <- y_val_pred <- y_test_pred <- NA
   }
-  MAPE = ifelse(ts_validation, MAPE_val, MAPE_train)
+  
   
   # Calculate all NRMSE
   nrmse_train <- sqrt(mean((y_train - y_train_pred)^2)) / (max(y_train) - min(y_train))
@@ -1202,7 +1203,6 @@ model_refit <- function(x_train, y_train, x_val, y_val, x_test, y_test,
     MAPE_train = MAPE_train,
     MAPE_val = MAPE_val,
     MAPE_test = MAPE_test,
-    MAPE = MAPE,
     nrmse_train = nrmse_train,
     nrmse_val = nrmse_val,
     nrmse_test = nrmse_test,
