@@ -67,24 +67,24 @@ robyn_pareto <- function(InputCollect, OutputModels,
   if (!hyper_fixed) {
     mape_lift_quantile10 <- quantile(resultHypParam$mape, probs = calibration_constraint, na.rm = TRUE)
     nrmse_quantile90 <- quantile(resultHypParam$nrmse, probs = 0.90, na.rm = TRUE)
-    MAPE_quantile90 <- quantile(resultHypParam$MAPE, probs = 0.90, na.rm = TRUE)
+    MAPE_quantile90 <- quantile(resultHypParam$MAPE_train, probs = 0.90, na.rm = TRUE)
     resultHypParam <- left_join(resultHypParam, xDecompAggCoef0, by = "solID") %>%
       mutate(
         mape.qt10 =
           .data$mape <= mape_lift_quantile10 &
             .data$nrmse <= nrmse_quantile90 &
-            .data$MAPE <= MAPE_quantile90
+            .data$MAPE_train <= MAPE_quantile90
       )
     # Calculate Pareto-fronts (for "all" or pareto_fronts)
     resultHypParamPareto <- filter(resultHypParam, .data$mape.qt10 == TRUE)
     paretoResults <- pareto_front(
       x = resultHypParamPareto$nrmse,
-      y = resultHypParamPareto$MAPE,
+      y = resultHypParamPareto$MAPE_train,
       fronts = ifelse("auto" %in% pareto_fronts, Inf, pareto_fronts),
       sort = FALSE
     )
     resultHypParamPareto <- resultHypParamPareto %>%
-      left_join(paretoResults, by = c("nrmse" = "x", "MAPE" = "y")) %>%
+      left_join(paretoResults, by = c("nrmse" = "x", "MAPE_train" = "y")) %>%
       rename("robynPareto" = "pareto_front") %>%
       arrange(.data$iterNG, .data$iterPar, .data$nrmse) %>%
       select(.data$solID, .data$robynPareto) %>%
