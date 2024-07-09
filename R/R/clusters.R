@@ -68,7 +68,7 @@ robyn_clusters <- function(input, dep_var_type,
     ))
   }
 
-  ignore <- c("solID", "mape", "decomp.rssd", "nrmse", "nrmse_test", "nrmse_train", "nrmse_val", "pareto")
+  ignore <- c("solID", "mape", "MAPE_train", "MAPE_val", "MAPE_test","decomp.rssd", "nrmse", "nrmse_test", "nrmse_train", "nrmse_val", "pareto")
 
   # Auto K selected by less than 5% WSS variance (convergence)
   min_clusters <- 3
