@@ -852,8 +852,6 @@ robyn_mmm <- function(InputCollect,
             #####################################
             #### Collect Multi-Objective Errors and Iteration Results
             resultCollect <- list()
-
-            MAPE = ifelse(ts_validation, mod_out$MAPE_val, mod_out$MAPE_train)
             
             # Auxiliary dynamic vector
             common <- data.frame(
@@ -868,7 +866,7 @@ robyn_mmm <- function(InputCollect,
               MAPE_train = mod_out$MAPE_train,
               MAPE_test = mod_out$MAPE_test,
               MAPE_val = mod_out$MAPE_val,
-              MAPE = MAPE,
+              MAPE = mod_out$MAPE,
               mape = mape,
               lambda = lambda_scaled,
               lambda_hp = lambda_hp,
@@ -1186,6 +1184,7 @@ model_refit <- function(x_train, y_train, x_val, y_val, x_test, y_test,
   } else {
     MAPE_val <- MAPE_test <- y_val_pred <- y_test_pred <- NA
   }
+  MAPE = ifelse(ts_validation, MAPE_val, MAPE_train)
   
   # Calculate all NRMSE
   nrmse_train <- sqrt(mean((y_train - y_train_pred)^2)) / (max(y_train) - min(y_train))
@@ -1203,6 +1202,7 @@ model_refit <- function(x_train, y_train, x_val, y_val, x_test, y_test,
     MAPE_train = MAPE_train,
     MAPE_val = MAPE_val,
     MAPE_test = MAPE_test,
+    MAPE = MAPE,
     nrmse_train = nrmse_train,
     nrmse_val = nrmse_val,
     nrmse_test = nrmse_test,
