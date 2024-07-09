@@ -51,7 +51,7 @@ robyn_converge <- function(OutputModels,
   calibrated <- isTRUE(sum(df$mape) > 0)
 
   # Calculate deciles
-  dt_objfunc_cvg <- tidyr::gather(df, "error_type", "value", any_of(c("nrmse", "MAPE", "mape"))) %>%
+  dt_objfunc_cvg <- tidyr::gather(df, "error_type", "value", any_of(c("nrmse", "MAPE_train", "mape"))) %>%
     select(.data$ElapsedAccum, .data$trial, .data$error_type, .data$value) %>%
     arrange(.data$trial, .data$ElapsedAccum) %>%
     filter(.data$value > 0, is.finite(.data$value)) %>%
@@ -148,7 +148,7 @@ robyn_converge <- function(OutputModels,
   moo_cloud_plot <- df %>%
     mutate(nrmse = lares::winsorize(.data$nrmse, nrmse_win), na.rm = TRUE) %>%
     ggplot(aes(
-      x = .data$nrmse, y = .data$MAPE, colour = .data$ElapsedAccum
+      x = .data$nrmse, y = .data$MAPE_train, colour = .data$ElapsedAccum
     )) +
     scale_colour_gradient(low = "skyblue", high = "navyblue") +
     labs(
@@ -157,7 +157,7 @@ robyn_converge <- function(OutputModels,
       ),
       subtitle = subtitle,
       x = ifelse(max(nrmse_win) == 1, "NRMSE", sprintf("NRMSE [Winsorized %s]", paste(nrmse_win, collapse = "-"))),
-      y = "MAPE",
+      y = "MAPE_train",
       colour = "Time [s]",
       size = "MAPE",
       alpha = NULL,
