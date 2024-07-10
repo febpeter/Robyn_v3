@@ -936,7 +936,7 @@ robyn_mmm <- function(InputCollect,
           if (!hyper_fixed) {
             if (is.null(calibration_input)) {
               for (co in 1:iterPar) {
-                optimizer$tell(nevergrad_hp[[co]], tuple(nrmse.collect[co], MAPE.collect[co]))
+                optimizer$tell(nevergrad_hp[[co]], tuple(decomp.rssd.collect[co], MAPE.collect[co]))
               }
             } else {
               for (co in 1:iterPar) {
