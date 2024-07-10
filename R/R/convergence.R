@@ -42,7 +42,7 @@
 #' @export
 robyn_converge <- function(OutputModels,
                            n_cuts = 20, sd_qtref = 3, med_lowb = 2,
-                           nrmse_win = c(0, 0.998), ...) {
+                           decomp_win = c(0, 0.998), ...) {
   stopifnot(n_cuts > min(c(sd_qtref, med_lowb)) + 1)
 
   # Gather all trials
@@ -51,7 +51,7 @@ robyn_converge <- function(OutputModels,
   calibrated <- isTRUE(sum(df$mape) > 0)
 
   # Calculate deciles
-  dt_objfunc_cvg <- tidyr::gather(df, "error_type", "value", any_of(c("nrmse", "MAPE_train", "mape"))) %>%
+  dt_objfunc_cvg <- tidyr::gather(df, "error_type", "value", any_of(c("decomp.rssd", "MAPE_train", "mape"))) %>%
     select(.data$ElapsedAccum, .data$trial, .data$error_type, .data$value) %>%
     arrange(.data$trial, .data$ElapsedAccum) %>%
     filter(.data$value > 0, is.finite(.data$value)) %>%
@@ -129,7 +129,7 @@ robyn_converge <- function(OutputModels,
     mutate(id = as.integer(.data$cuts)) %>%
     mutate(cuts = factor(.data$cuts, levels = rev(levels(.data$cuts)))) %>%
     group_by(.data$error_type) %>%
-    mutate(value = lares::winsorize(.data$value, nrmse_win), na.rm = TRUE) %>%
+    mutate(value = lares::winsorize(.data$value, decomp_win), na.rm = TRUE) %>%
     ggplot(aes(x = .data$value, y = .data$cuts, fill = -.data$id)) +
     ggridges::geom_density_ridges(
       scale = 2.5, col = "white", quantile_lines = TRUE, quantiles = 2, alpha = 0.7
@@ -146,9 +146,9 @@ robyn_converge <- function(OutputModels,
     )
 
   moo_cloud_plot <- df %>%
-    mutate(nrmse = lares::winsorize(.data$nrmse, nrmse_win), na.rm = TRUE) %>%
+    mutate(decomp.rssd = lares::winsorize(.data$decomp.rssd, decomp_win), na.rm = TRUE) %>%
     ggplot(aes(
-      x = .data$nrmse, y = .data$MAPE_train, colour = .data$ElapsedAccum
+      x = .data$decomp.rssd, y = .data$MAPE_train, colour = .data$ElapsedAccum
     )) +
     scale_colour_gradient(low = "skyblue", high = "navyblue") +
     labs(
@@ -156,7 +156,7 @@ robyn_converge <- function(OutputModels,
         "Multi-objective evolutionary performance with calibration"
       ),
       subtitle = subtitle,
-      x = ifelse(max(nrmse_win) == 1, "NRMSE", sprintf("NRMSE [Winsorized %s]", paste(nrmse_win, collapse = "-"))),
+      x = ifelse(max(decomp_win) == 1, "Decomp.RSSD", sprintf("Decomp.RSSD [Winsorized %s]", paste(decomp_win, collapse = "-"))),
       y = "MAPE_train",
       colour = "Time [s]",
       size = "MAPE",
